@@ -85,12 +85,12 @@ echo "📄 Adicionando workflow pré-configurado..."
 WORKFLOW_DIR="$COMFY_DIR/user/default/workflows"
 mkdir -p "$WORKFLOW_DIR"
 
-# URL raw do workflow com OnDemand Lora Loader (fornecida por você)
-WORKFLOW_URL="https://raw.githubusercontent.com/willastros-sketch/NEIA-COMFYUI/refs/heads/main/%CE%9D%CE%9E%CE%99%CE%94%E2%84%A2%20-%20GERAR%20VIDEOS%20%2B18%20-%20IMG2VID%20(RunPod).json"
+# URL raw do workflow com OnDemand Lora Loader (CORRIGIDA!)
+WORKFLOW_URL="https://raw.githubusercontent.com/willastros-sketch/NEIA-COMFYUI/main/%CE%9D%CE%9E%CE%99%CE%94%E2%84%A2%20-%20GERAR%20VIDEOS%20%2B18%20-%20IMG2VID%20(RunPod).json"
 WORKFLOW_FILE="ΝΞΙΔ™ - GERAR VIDEOS +18.json"
 
 echo "Baixando workflow de: $WORKFLOW_URL"
-curl -fsSL "$WORKFLOW_URL" -o "$WORKFLOW_DIR/$WORKFLOW_FILE"
+curl -fsSL "$WORKFLOW_URL" -o "$WORKFLOW_DIR/$WORKFLOW_FILE" || echo "❌ Falha no download do workflow. Verifique a URL."
 
 echo "✅ Workflow salvo em: $WORKFLOW_DIR/$WORKFLOW_FILE"
 
