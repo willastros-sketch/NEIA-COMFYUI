@@ -1,6 +1,7 @@
 #!/bin/bash
 # Script de setup para ComfyUI - Wan2.2 I2V (público)
-# Versão final e funcional - NEIA COMMUNITY
+# Baseado no workflow: NEIA GERAR VIDEOS 18.json
+# Inclui todos os custom nodes necessários e o workflow pré-configurado
 
 set -e
 
@@ -15,25 +16,25 @@ cd "$COMFY_DIR" || { echo "❌ Erro: $COMFY_DIR não encontrado!"; exit 1; }
 echo "📦 Instalando custom nodes..."
 cd custom_nodes || mkdir -p custom_nodes && cd custom_nodes
 
-# rgthree-comfy
+# rgthree-comfy (para Fast Bypasser)
 [ ! -d "rgthree-comfy" ] && git clone https://github.com/rgthree/rgthree-comfy.git && echo "✅ rgthree-comfy instalado"
 
-# ComfyUI-Easy-Use
+# ComfyUI-Easy-Use (para easy int, easy showAnything)
 [ ! -d "ComfyUI-Easy-Use" ] && git clone https://github.com/yolain/ComfyUI-Easy-Use.git && echo "✅ ComfyUI-Easy-Use instalado"
 
-# ComfyUI-Math
+# ComfyUI-Math (para SimpleMath+)
 [ ! -d "ComfyUI-Math" ] && git clone https://github.com/evanspearman/ComfyUI-Math.git && echo "✅ ComfyUI-Math instalado"
 
-# ComfyUI-VideoHelperSuite (VHS)
+# ComfyUI-VideoHelperSuite (VHS) (para VHS_VideoCombine)
 [ ! -d "ComfyUI-VideoHelperSuite" ] && git clone https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite.git && echo "✅ ComfyUI-VideoHelperSuite instalado"
 
-# ComfyUI-Custom-Scripts (pysssss)
+# ComfyUI-Custom-Scripts (pysssss) (para MathExpression)
 [ ! -d "ComfyUI-Custom-Scripts" ] && git clone https://github.com/pythongosssss/ComfyUI-Custom-Scripts.git && echo "✅ ComfyUI-Custom-Scripts instalado"
 
-# ComfyUI-Manager
+# ComfyUI-Manager (opcional, mas útil)
 [ ! -d "ComfyUI-Manager" ] && git clone https://github.com/ltdrdata/ComfyUI-Manager.git && echo "✅ ComfyUI-Manager instalado"
 
-# ComfyUI-OnDemand-Loaders
+# ComfyUI-OnDemand-Loaders (para OnDemand Lora Loader)
 if [ ! -d "ComfyUI-OnDemand-Loaders" ]; then
     git clone https://github.com/francarl/ComfyUI-OnDemand-Loaders.git
     cd ComfyUI-OnDemand-Loaders
@@ -75,26 +76,18 @@ aria2c -x 4 -s 4 -c -d models/loras -o "Wan2.2-Lightning_I2V-A14B-4steps-lora_LO
 aria2c -x 4 -s 4 -c -d models/loras -o "Wan2.2-Lightning_I2V-A14B-4steps-lora_HIGH_fp16.safetensors" \
     "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/loras/wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors"
 
-# 4. Instalar FFmpeg
+# 4. Instalar FFmpeg (necessário para VHS_VideoCombine)
 echo "🎬 Instalando FFmpeg..."
 apt update && apt install -y ffmpeg
 
-# 5. Baixar o workflow pré-configurado
+# 5. Baixar o workflow pré-configurado (NEIA GERAR VIDEOS 18.json)
 echo "📄 Adicionando workflow pré-configurado..."
 WORKFLOW_DIR="$COMFY_DIR/user/default/workflows"
 mkdir -p "$WORKFLOW_DIR"
 
-# URL raw do workflow (verifique se está exatamente igual no seu repositório)
-WORKFLOW_URL="https://raw.githubusercontent.com/willastros-sketch/NEIA-COMFYUI/main/%CE%9D%CE%9E%CE%99%CE%94%E2%84%A2%20-%20GERAR%20VIDEOS%20%2B18%20-%20IMG2VID%20(RunPod).json"
-WORKFLOW_FILE="ΝΞΙΔ™ - GERAR VIDEOS +18.json"
-# 5. Baixar o workflow pré-configurado
-echo "📄 Adicionando workflow pré-configurado..."
-WORKFLOW_DIR="$COMFY_DIR/user/default/workflows"
-mkdir -p "$WORKFLOW_DIR"
-
-# URL raw do workflow (VERIFICADA E CORRIGIDA)
-WORKFLOW_URL="https://raw.githubusercontent.com/willastros-sketch/NEIA-COMFYUI/main/%CE%9D%CE%9E%CE%99%CE%94%E2%84%A2%20-%20GERAR%20VIDEOS%20%2B18%20-%20IMG2VID%20(RunPod).json"
-WORKFLOW_FILE="ΝΞΙΔ™ - GERAR VIDEOS +18.json"
+# URL raw do workflow (a que você forneceu)
+WORKFLOW_URL="https://raw.githubusercontent.com/willastros-sketch/NEIA-COMFYUI/refs/heads/main/NEIA%20GERAR%20VIDEOS%2018%20.json"
+WORKFLOW_FILE="NEIA GERAR VIDEOS 18.json"
 
 echo "Baixando workflow de: $WORKFLOW_URL"
 if curl -fsSL "$WORKFLOW_URL" -o "$WORKFLOW_DIR/$WORKFLOW_FILE"; then
@@ -103,3 +96,14 @@ else
     echo "❌ Falha no download do workflow. Verifique a URL e o nome do arquivo."
     exit 1
 fi
+
+echo "ℹ️  Este workflow já utiliza os nós OnDemand Lora Loader, rgthree, Easy-Use, Math, VHS, pysssss."
+echo "   Agora você pode colar diretamente as URLs do CivitAI nos campos dos Loaders."
+
+echo "========================================="
+echo "✅ Setup concluído com sucesso!"
+echo "🚀 Iniciando ComfyUI na porta 8188..."
+echo "========================================="
+
+cd "$COMFY_DIR"
+python main.py --listen --port 8188
