@@ -1,109 +1,70 @@
 #!/bin/bash
-# Script de setup para ComfyUI - Wan2.2 I2V (público)
-# Baseado no workflow: NEIA GERAR VIDEOS 18.json
-# Inclui todos os custom nodes necessários e o workflow pré-configurado
 
-set -e
+# --- Configurações de Caminhos ---
+WORKSPACE="/workspace"
+COMFY_DIR="$WORKSPACE/ComfyUI"
 
-echo "========================================="
-echo "🚀 Iniciando setup do ambiente ComfyUI"
-echo "========================================="
+echo "=========================================="
+echo "🚀 INICIANDO SETUP COMPLETO NEIA-COMFYUI"
+echo "=========================================="
 
-COMFY_DIR="/workspace/ComfyUI"
-cd "$COMFY_DIR" || { echo "❌ Erro: $COMFY_DIR não encontrado!"; exit 1; }
-
-# 1. Instalar nós customizados
-echo "📦 Instalando custom nodes..."
-cd custom_nodes || mkdir -p custom_nodes && cd custom_nodes
-
-# rgthree-comfy (para Fast Bypasser)
-[ ! -d "rgthree-comfy" ] && git clone https://github.com/rgthree/rgthree-comfy.git && echo "✅ rgthree-comfy instalado"
-
-# ComfyUI-Easy-Use (para easy int, easy showAnything)
-[ ! -d "ComfyUI-Easy-Use" ] && git clone https://github.com/yolain/ComfyUI-Easy-Use.git && echo "✅ ComfyUI-Easy-Use instalado"
-
-# ComfyUI-Math (para SimpleMath+)
-[ ! -d "ComfyUI-Math" ] && git clone https://github.com/evanspearman/ComfyUI-Math.git && echo "✅ ComfyUI-Math instalado"
-
-# ComfyUI-VideoHelperSuite (VHS) (para VHS_VideoCombine)
-[ ! -d "ComfyUI-VideoHelperSuite" ] && git clone https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite.git && echo "✅ ComfyUI-VideoHelperSuite instalado"
-
-# ComfyUI-Custom-Scripts (pysssss) (para MathExpression)
-[ ! -d "ComfyUI-Custom-Scripts" ] && git clone https://github.com/pythongosssss/ComfyUI-Custom-Scripts.git && echo "✅ ComfyUI-Custom-Scripts instalado"
-
-# ComfyUI-Manager (opcional, mas útil)
-[ ! -d "ComfyUI-Manager" ] && git clone https://github.com/ltdrdata/ComfyUI-Manager.git && echo "✅ ComfyUI-Manager instalado"
-
-# ComfyUI-OnDemand-Loaders (para OnDemand Lora Loader)
-if [ ! -d "ComfyUI-OnDemand-Loaders" ]; then
-    git clone https://github.com/francarl/ComfyUI-OnDemand-Loaders.git
-    cd ComfyUI-OnDemand-Loaders
-    pip install -r requirements.txt
-    cd ..
-    echo "✅ ComfyUI-OnDemand-Loaders instalado"
+# 1. Preparar o ambiente e clonar o ComfyUI
+cd $WORKSPACE
+if [ ! -d "$COMFY_DIR" ]; then
+    echo "📥 Clonando ComfyUI..."
+    git clone https://github.com/comfyanonymous/ComfyUI.git
 fi
-
 cd "$COMFY_DIR"
 
-# 2. Pastas de modelos
-echo "📁 Criando pastas para modelos..."
-mkdir -p models/vae models/clip models/diffusion_models models/loras
+# 2. Instalar Custom Nodes (Essenciais para o Workflow)
+echo "🧩 Instalando Custom Nodes..."
+cd "$COMFY_DIR/custom_nodes"
 
-# 3. Baixar modelos públicos com aria2c
-echo "⬇️ Baixando modelos (pode levar alguns minutos)..."
-command -v aria2c >/dev/null 2>&1 || { apt update && apt install -y aria2; }
+nodes=(
+    "https://github.com/ltdrdata/ComfyUI-Manager.git"
+    "https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite.git"
+    "https://github.com/rgthree/rgthree-comfy.git"
+    "https://github.com/stealthix/ComfyUI-OnDemand-Lora-Loader.git"
+)
 
-# VAE
-aria2c -x 4 -s 4 -c -d models/vae -o wan_2.1_vae.safetensors \
-    "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/vae/wan_2.1_vae.safetensors"
+for repo in "${nodes[@]}"; do
+    dir_name=$(basename "$repo" .git)
+    if [ ! -d "$dir_name" ]; then
+        echo "📥 Instalando $dir_name..."
+        git clone "$repo"
+    fi
+done
 
-# CLIP
-aria2c -x 4 -s 4 -c -d models/clip -o umt5_xxl_fp8_e4m3fn_scaled.safetensors \
-    "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors"
-
-# UNET Low Noise
-aria2c -x 4 -s 4 -c -d models/diffusion_models -o wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors \
-    "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors"
-
-# UNET High Noise
-aria2c -x 4 -s 4 -c -d models/diffusion_models -o wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors \
-    "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors"
-
-# LoRAS Lightning (públicas)
-aria2c -x 4 -s 4 -c -d models/loras -o "Wan2.2-Lightning_I2V-A14B-4steps-lora_LOW_fp16.safetensors" \
-    "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/loras/wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors"
-
-aria2c -x 4 -s 4 -c -d models/loras -o "Wan2.2-Lightning_I2V-A14B-4steps-lora_HIGH_fp16.safetensors" \
-    "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/loras/wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors"
-
-# 4. Instalar FFmpeg (necessário para VHS_VideoCombine)
-echo "🎬 Instalando FFmpeg..."
-apt update && apt install -y ffmpeg
-
-# 5. Baixar o workflow pré-configurado (NEIA GERAR VIDEOS 18.json)
-echo "📄 Adicionando workflow pré-configurado..."
-WORKFLOW_DIR="$COMFY_DIR/user/default/workflows"
-mkdir -p "$WORKFLOW_DIR"
-
-# URL raw do workflow (a que você forneceu)
-WORKFLOW_URL="https://raw.githubusercontent.com/willastros-sketch/NEIA-COMFYUI/refs/heads/main/NEIA%20GERAR%20VIDEOS%2018%20.json"
-WORKFLOW_FILE="NEIA GERAR VIDEOS 18.json"
-
-echo "Baixando workflow de: $WORKFLOW_URL"
-if curl -fsSL "$WORKFLOW_URL" -o "$WORKFLOW_DIR/$WORKFLOW_FILE"; then
-    echo "✅ Workflow salvo em: $WORKFLOW_DIR/$WORKFLOW_FILE"
-else
-    echo "❌ Falha no download do workflow. Verifique a URL e o nome do arquivo."
-    exit 1
+# 3. Baixar os Modelos (Checkpoints)
+# Nota: Verifique se o seu workflow usa o Juggernaut ou Wan2.1. 
+# Vou deixar o Juggernaut XL como exemplo, que é muito comum.
+echo "💾 Baixando Modelos..."
+mkdir -p "$COMFY_DIR/models/checkpoints"
+cd "$COMFY_DIR/models/checkpoints"
+if [ ! -f "juggernautXL_v9.safetensors" ]; then
+    wget -O "juggernautXL_v9.safetensors" "https://civitai.com/api/download/models/348913?type=Model&format=SafeTensor"
 fi
 
-echo "ℹ️  Este workflow já utiliza os nós OnDemand Lora Loader, rgthree, Easy-Use, Math, VHS, pysssss."
-echo "   Agora você pode colar diretamente as URLs do CivitAI nos campos dos Loaders."
+# 4. CONFIGURAR O SEU WORKFLOW COMO PADRÃO
+echo "📄 Baixando seu Workflow e definindo como padrão..."
+# Criamos a pasta onde o ComfyUI busca o workflow inicial
+mkdir -p "$COMFY_DIR/user/default/workflows"
 
-echo "========================================="
-echo "✅ Setup concluído com sucesso!"
-echo "🚀 Iniciando ComfyUI na porta 8188..."
-echo "========================================="
+# Link correto que você enviou (com tratamento para espaços)
+WORKFLOW_URL="https://raw.githubusercontent.com/willastros-sketch/NEIA-COMFYUI/main/NEIA%20GERAR%20VIDEOS%2018%20.json"
 
+# Baixamos e salvamos como default.json para ele abrir automático na tela
+curl -fsSL "$WORKFLOW_URL" -o "$COMFY_DIR/user/default/workflows/default.json"
+
+# 5. Instalar dependências de Python
+echo "📦 Instalando dependências..."
 cd "$COMFY_DIR"
+pip install -r requirements.txt
+pip install opencv-python-headless ffmpeg-python
+
+echo "=========================================="
+echo "✅ TUDO PRONTO! O workflow NEIA vai carregar ao abrir."
+echo "=========================================="
+
+# 6. Inicia o ComfyUI
 python main.py --listen --port 8188
