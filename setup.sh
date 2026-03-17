@@ -87,6 +87,14 @@ mkdir -p "$WORKFLOW_DIR"
 # URL raw do workflow (verifique se está exatamente igual no seu repositório)
 WORKFLOW_URL="https://raw.githubusercontent.com/willastros-sketch/NEIA-COMFYUI/main/%CE%9D%CE%9E%CE%99%CE%94%E2%84%A2%20-%20GERAR%20VIDEOS%20%2B18%20-%20IMG2VID%20(RunPod).json"
 WORKFLOW_FILE="ΝΞΙΔ™ - GERAR VIDEOS +18.json"
+# 5. Baixar o workflow pré-configurado
+echo "📄 Adicionando workflow pré-configurado..."
+WORKFLOW_DIR="$COMFY_DIR/user/default/workflows"
+mkdir -p "$WORKFLOW_DIR"
+
+# URL raw do workflow (VERIFICADA E CORRIGIDA)
+WORKFLOW_URL="https://raw.githubusercontent.com/willastros-sketch/NEIA-COMFYUI/main/%CE%9D%CE%9E%CE%99%CE%94%E2%84%A2%20-%20GERAR%20VIDEOS%20%2B18%20-%20IMG2VID%20(RunPod).json"
+WORKFLOW_FILE="ΝΞΙΔ™ - GERAR VIDEOS +18.json"
 
 echo "Baixando workflow de: $WORKFLOW_URL"
 if curl -fsSL "$WORKFLOW_URL" -o "$WORKFLOW_DIR/$WORKFLOW_FILE"; then
@@ -95,14 +103,3 @@ else
     echo "❌ Falha no download do workflow. Verifique a URL e o nome do arquivo."
     exit 1
 fi
-
-echo "ℹ️  Este workflow já utiliza os nós OnDemand Lora Loader!"
-echo "   Agora você pode colar diretamente as URLs do CivitAI nos campos dos Loaders."
-
-echo "========================================="
-echo "✅ Setup concluído com sucesso!"
-echo "🚀 Iniciando ComfyUI na porta 8188..."
-echo "========================================="
-
-cd "$COMFY_DIR"
-python main.py --listen --port 8188
