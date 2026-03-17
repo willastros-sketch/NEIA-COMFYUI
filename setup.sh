@@ -1,7 +1,6 @@
 #!/bin/bash
 # Script de setup para ComfyUI - Wan2.2 I2V (público)
-# Inclui ComfyUI-Manager, OnDemand Loaders e o workflow pré-configurado
-# Executado automaticamente ao iniciar o pod no RunPod
+# Versão final e funcional - NEIA COMMUNITY
 
 set -e
 
@@ -80,29 +79,30 @@ aria2c -x 4 -s 4 -c -d models/loras -o "Wan2.2-Lightning_I2V-A14B-4steps-lora_HI
 echo "🎬 Instalando FFmpeg..."
 apt update && apt install -y ffmpeg
 
-# 5. Baixar o workflow pré-configurado (com OnDemand Lora Loader)
+# 5. Baixar o workflow pré-configurado
 echo "📄 Adicionando workflow pré-configurado..."
 WORKFLOW_DIR="$COMFY_DIR/user/default/workflows"
 mkdir -p "$WORKFLOW_DIR"
 
-# URL raw do workflow com OnDemand Lora Loader (CORRIGIDA!)
+# URL raw do workflow (verifique se está exatamente igual no seu repositório)
 WORKFLOW_URL="https://raw.githubusercontent.com/willastros-sketch/NEIA-COMFYUI/main/%CE%9D%CE%9E%CE%99%CE%94%E2%84%A2%20-%20GERAR%20VIDEOS%20%2B18%20-%20IMG2VID%20(RunPod).json"
 WORKFLOW_FILE="ΝΞΙΔ™ - GERAR VIDEOS +18.json"
 
 echo "Baixando workflow de: $WORKFLOW_URL"
-curl -fsSL "$WORKFLOW_URL" -o "$WORKFLOW_DIR/$WORKFLOW_FILE" || echo "❌ Falha no download do workflow. Verifique a URL."
+if curl -fsSL "$WORKFLOW_URL" -o "$WORKFLOW_DIR/$WORKFLOW_FILE"; then
+    echo "✅ Workflow salvo em: $WORKFLOW_DIR/$WORKFLOW_FILE"
+else
+    echo "❌ Falha no download do workflow. Verifique a URL e o nome do arquivo."
+    exit 1
+fi
 
-echo "✅ Workflow salvo em: $WORKFLOW_DIR/$WORKFLOW_FILE"
-
-# Aviso atualizado sobre os Load Lora
 echo "ℹ️  Este workflow já utiliza os nós OnDemand Lora Loader!"
 echo "   Agora você pode colar diretamente as URLs do CivitAI nos campos dos Loaders."
-echo "   🎉 Tudo pronto para gerar vídeos +18!"
 
 echo "========================================="
 echo "✅ Setup concluído com sucesso!"
-echo "🚀 Iniciando ComfyUI..."
+echo "🚀 Iniciando ComfyUI na porta 8188..."
 echo "========================================="
 
 cd "$COMFY_DIR"
-python main.py --listen
+python main.py --listen --port 8188
