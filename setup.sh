@@ -1,6 +1,6 @@
 #!/bin/bash
-# Script de setup para ComfyUI - Wan2.2 I2V (definitivo)
-# Baseado no workflow: NEIA-GERAR-VIDEOS-18.json
+# Script de setup para ComfyUI - Wan2.2 I2V (versão simplificada)
+# Apenas instala custom nodes e baixa modelos. Workflow será importado manualmente.
 
 set -e
 
@@ -79,29 +79,15 @@ aria2c -x 4 -s 4 -c -d models/loras -o "Wan2.2-Lightning_I2V-A14B-4steps-lora_HI
 echo "🎬 Instalando FFmpeg..."
 apt update && apt install -y ffmpeg
 
-# 5. Baixar o workflow (URL VERIFICADA)
-echo "📄 Adicionando workflow pré-configurado..."
-WORKFLOW_DIR="$COMFY_DIR/user/default/workflows"
-mkdir -p "$WORKFLOW_DIR"
-
-# URL raw do workflow fornecida por você
-WORKFLOW_URL="https://raw.githubusercontent.com/willastros-sketch/NEIA-COMFYUI/main/NEIA-GERAR-VIDEOS-18.json"
-WORKFLOW_FILE="NEIA-GERAR-VIDEOS-18.json"
-
-echo "Baixando workflow de: $WORKFLOW_URL"
-if curl -fsSL "$WORKFLOW_URL" -o "$WORKFLOW_DIR/$WORKFLOW_FILE"; then
-    echo "✅ Workflow salvo em: $WORKFLOW_DIR/$WORKFLOW_FILE"
-else
-    echo "❌ Falha no download do workflow. Abortando."
-    exit 1
-fi
-
-echo "ℹ️  Este workflow já utiliza os nós OnDemand Lora Loader, rgthree, Easy-Use, Math, VHS, pysssss."
-echo "   Agora você pode colar diretamente as URLs do CivitAI nos campos dos Loaders."
-
 echo "========================================="
 echo "✅ Setup concluído com sucesso!"
 echo "🚀 Iniciando ComfyUI na porta 8188..."
+echo "========================================="
+echo "ℹ️  Workflow não foi baixado automaticamente."
+echo "   Para importar manualmente:"
+echo "   1. Acesse a interface web do ComfyUI (URL do pod na porta 8188)"
+echo "   2. Clique em 'Load' (ou arraste o arquivo JSON para a janela)"
+echo "   3. Selecione o arquivo do workflow que você tem localmente"
 echo "========================================="
 
 cd "$COMFY_DIR"
