@@ -1,6 +1,6 @@
 #!/bin/bash
 # Script de setup para ComfyUI - Wan2.2 I2V (definitivo)
-# Baseado no workflow: NEIA GERAR VIDEOS 18.json
+# Baseado no workflow: NEIA-GERAR-VIDEOS-18.json
 
 set -e
 
@@ -15,21 +15,21 @@ cd "$COMFY_DIR" || { echo "❌ Erro: $COMFY_DIR não encontrado!"; exit 1; }
 echo "📦 Instalando custom nodes..."
 cd custom_nodes || mkdir -p custom_nodes && cd custom_nodes
 
-NODES=(
-    "rgthree-comfy:https://github.com/rgthree/rgthree-comfy.git"
-    "ComfyUI-Easy-Use:https://github.com/yolain/ComfyUI-Easy-Use.git"
-    "ComfyUI-Math:https://github.com/evanspearman/ComfyUI-Math.git"
-    "ComfyUI-VideoHelperSuite:https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite.git"
-    "ComfyUI-Custom-Scripts:https://github.com/pythongosssss/ComfyUI-Custom-Scripts.git"
-    "ComfyUI-Manager:https://github.com/ltdrdata/ComfyUI-Manager.git"
+# Lista de repositórios de nodes
+declare -A NODES=(
+    ["rgthree-comfy"]="https://github.com/rgthree/rgthree-comfy.git"
+    ["ComfyUI-Easy-Use"]="https://github.com/yolain/ComfyUI-Easy-Use.git"
+    ["ComfyUI-Math"]="https://github.com/evanspearman/ComfyUI-Math.git"
+    ["ComfyUI-VideoHelperSuite"]="https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite.git"
+    ["ComfyUI-Custom-Scripts"]="https://github.com/pythongosssss/ComfyUI-Custom-Scripts.git"
+    ["ComfyUI-Manager"]="https://github.com/ltdrdata/ComfyUI-Manager.git"
 )
 
-for node in "${NODES[@]}"; do
-    IFS=":" read -r name repo <<< "$node"
-    if [ ! -d "$name" ]; then
-        git clone "$repo" && echo "✅ $name instalado"
+for node in "${!NODES[@]}"; do
+    if [ ! -d "$node" ]; then
+        git clone "${NODES[$node]}" && echo "✅ $node instalado"
     else
-        echo "⏩ $name já existe"
+        echo "⏩ $node já existe"
     fi
 done
 
@@ -84,8 +84,9 @@ echo "📄 Adicionando workflow pré-configurado..."
 WORKFLOW_DIR="$COMFY_DIR/user/default/workflows"
 mkdir -p "$WORKFLOW_DIR"
 
-WORKFLOW_URL="https://raw.githubusercontent.com/willastros-sketch/NEIA-COMFYUI/main/NEIA%20GERAR%20VIDEOS%2018%20.json"
-WORKFLOW_FILE="NEIA GERAR VIDEOS 18.json"
+# URL raw do workflow fornecida por você
+WORKFLOW_URL="https://raw.githubusercontent.com/willastros-sketch/NEIA-COMFYUI/main/NEIA-GERAR-VIDEOS-18.json"
+WORKFLOW_FILE="NEIA-GERAR-VIDEOS-18.json"
 
 echo "Baixando workflow de: $WORKFLOW_URL"
 if curl -fsSL "$WORKFLOW_URL" -o "$WORKFLOW_DIR/$WORKFLOW_FILE"; then
@@ -94,6 +95,9 @@ else
     echo "❌ Falha no download do workflow. Abortando."
     exit 1
 fi
+
+echo "ℹ️  Este workflow já utiliza os nós OnDemand Lora Loader, rgthree, Easy-Use, Math, VHS, pysssss."
+echo "   Agora você pode colar diretamente as URLs do CivitAI nos campos dos Loaders."
 
 echo "========================================="
 echo "✅ Setup concluído com sucesso!"
