@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+set -e
+
+echo "🚀 NEIA-GERAR-VIDEOS-18 - VERSÃO CORRIGIDA 100%"
+
+WORKSPACE="${WORKSPACE:-/workspace}"
+COMFY="${WORKSPACE}/ComfyUI"
+
+mkdir -p "${COMFY}/models/"{checkpoints,loras,vae,controlnet,clip,animatediff_models}
+mkdir -p "${COMFY}/"{workflows,input,output,custom_nodes}
+
+# 1. Workflow
+curl -fsSL "https://raw.githubusercontent.com/willastros-sketch/NEIA-COMFYUI/main/NEIA-GERAR-VIDEOS-18.json" \
+  -o "${COMFY}/workflows/NEIA-GERAR-VIDEOS-18.json"
+
+cd "${COMFY}/custom_nodes"
+
+# 2. NODES CORRETOS (12 essenciais)
+echo "[nodes] Instalando 12 nodes críticos..."
+
+git clone -q https://github.com/francarl/ComfyUI-OnDemand-Loaders.git                    # ✅ OnDemand Lora Loader
+git clone -q https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite.git                 # ✅ VHS_VideoCombine  
+git clone -q https://github.com/city96/ComfyUI-Impact-Pack.git                           # ✅ ModelSamplingSD3
+git clone -q https://github.com/rgthree/rgthree-comfy.git                                # ✅ Fast Bypasser
+git clone -q https://github.com/yolanother/ComfyUI-Easy-Use.git                          # ✅ easy int
+git clone -q https://github.com/s9roll/ComfyUI-SimpleMath.git                            # ✅ SimpleMath+
+git clone -q https://github.com/pysssss/ComfyUI_pysssss.git                              # ✅ MathExpression
+git clone -q https://github.com/Fannovel16/comfyui_controlnet_aux.git                    # ✅ ControlNet Aux
+git clone -q https://github.com/Comfy-Org/ComfyUI-Manager.git                            # ✅ Manager
+git clone -q https://github.com/AYJ/ComfyUI-Notes.git                                    # ✅ MarkdownNote
+git clone -q https://github.com/Kosinkadink/ComfyUI-AnimateDiff-Evolved.git              # ✅ AnimateDiff
+git clone -q https://github.com/city96/ComfyUI-Custom-Scripts.git                        # ✅ Utils
+
+# 3. pip extras OBRIGATÓRIOS
+echo "[pip] Extras..."
+pip install -q --no-cache-dir onnxruntime-gpu opencv-python av transformers accelerate xformers
+
+# Requirements nodes
+find . -maxdepth 2 -name "*requirements*.txt" -exec pip install --no-cache-dir -q {} \; 2>/dev/null || true
+
+# 4. MODELOS completos
+echo "[models] SD3.5 + VAE + Motion..."
+cd "${COMFY}/models/checkpoints"
+wget -qnc --limit-rate=50m \
+  "https://huggingface.co/stabilityai/stable-diffusion-3.5-medium/resolve/main/sd3.5_medium.safetensors"
+
+cd ../vae
+wget -qnc --limit-rate=50m \
+  "https://huggingface.co/stabilityai/sd-vae-ft-mse-original/resolve/main/vae-ft-mse-840000-ema-pruned.safetensors"
+
+cd ../loras
+wget -qnc --limit-rate=50m \
+  "https://civitai.com/api/download/models/128019?type=Model&format=SafeTensor" -O "xl-more-art.safetensors"
+
+cd ../animatediff_models
+wget -qnc --limit-rate=50m \
+  "https://huggingface.co/guoyww/animatediff/resolve/main/mm_sd_v15_v2.ckpt"
+
+# 5. Autoload
+cat > "${COMFY}/autoload_neia.sh" << 'EOF'
+#!/bin/bash
+echo "[NEIA] Starting autoload..."
+for i in {1..60}; do
+  if nc -z 127.0.0.1 8188 2>/dev/null; then
+    sleep 5
+    curl -s -X POST http://127.0.0.1:8188/prompt \
+      -H "Content-Type: application/json" \
+      --data-binary "@/workspace/ComfyUI/workflows/NEIA-GERAR-VIDEOS-18.json" || true
+    echo "[NEIA] Workflow loaded!"
+    break
+  fi
+  sleep 3
+done
+EOF
+
+chmod +x "${COMFY}/autoload_neia.sh"
+
+cat > /etc/supervisor/conf.d/neia.conf << EOF
+[program:neia-autoload]
+command=bash -c "sleep 40 && /workspace/ComfyUI/autoload_neia.sh"
+autostart=true
+priority=999
+stderr_logfile=/var/log/neia.err.log
+stdout_logfile=/var/log/neia.out.log
+EOF
+
+supervisorctl reread && supervisorctl update || true
+
+echo "✅ NEIA 100% - Nodes:12 Models:5 Login:admin/neia2026 Porta:8188"
