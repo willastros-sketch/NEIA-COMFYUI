@@ -1,87 +1,92 @@
 #!/usr/bin/env bash
 set -e
 
-echo "[init] 🚀 NEIA-GERAR-VIDEOS-18 Complete Setup..."
+echo "🚀 NEIA-GERAR-VIDEOS-18 Setup Completo - Mar/2026"
 
 WORKSPACE="${WORKSPACE:-/workspace}"
-COMFY_DIR="${WORKSPACE}/ComfyUI"
-MODELS_DIR="${COMFY_DIR}/models"
+COMFY="${WORKSPACE}/ComfyUI"
 
-# Dirs padrão ComfyUI
-mkdir -p "${MODELS_DIR}/"{checkpoints,loras,vae,controlnet,clip,text_encoder,animatediff_models}
-mkdir -p "${COMFY_DIR}/workflows"
+# Diretórios padrão
+mkdir -p "${COMFY}/models/"{checkpoints,loras,vae,controlnet,clip}
+mkdir -p "${COMFY}/"{workflows,input,output,custom_nodes}
 
-# Workflow
-curl -fsSL "https://raw.githubusercontent.com/willastros-sketch/NEIA-COMFYUI/refs/heads/main/NEIA-GERAR-VIDEOS-18.json" \
-  -o "${COMFY_DIR}/workflows/NEIA-GERAR-VIDEOS-18.json"
+# 1. Workflow NEIA
+echo "[1/5] Baixando workflow NEIA..."
+curl -fsSL "https://raw.githubusercontent.com/willastros-sketch/NEIA-COMFYUI/main/NEIA-GERAR-VIDEOS-18.json" \
+  -o "${COMFY}/workflows/NEIA-GERAR-VIDEOS-18.json"
 
-cd "${COMFY_DIR}/custom_nodes"
+# 2. Custom Nodes OBRIGATÓRIOS (mapeados do seu JSON)
+cd "${COMFY}/custom_nodes"
+echo "[2/5] Custom Nodes (8 repos)..."
 
-# === CUSTOM NODES OBRIGATÓRIOS (do seu workflow) ===
-declare -a REQUIRED_NODES=(
-  "Kosinkadink/ComfyUI-VideoHelperSuite.git"           # VHS_VideoCombine, LoadAudio
-  "Kosinkadink/ComfyUI-AnimateDiff-Evolved.git"        # AnimateDiff (caso use)
-  "Fannovel16/comfyui_controlnet_aux.git"              # ControlNet auxiliares
-  "comfyanonymous/ComfyUI-Manager.git"                 # Model manager
-  "rgthree/rgthree-comfy.git"                          # Fast Bypasser
-  "yolanother/ComfyUI-Easy-Use.git"                    # easy int, easy showAnything
-  "s9roll/ComfyUI-SimpleMath.git"                      # SimpleMath+
-  "OnDemandLoRA/ComfyUI-OnDemandLoRA.git"              # OnDemand Lora Loader
-  "pysssss/ComfyUI_pysssss.git"                        # MathExpression|pysssss
-  "city96/ComfyUI-Model-Sampling.git"                  # ModelSamplingSD3
+NODES=(
+  "Kosinkadink/ComfyUI-VideoHelperSuite.git"      # VHS_VideoCombine, LoadAudio
+  "rgthree/rgthree-comfy.git"                     # Fast Bypasser  
+  "yolanother/ComfyUI-Easy-Use.git"               # easy int/showAnything
+  "s9roll/ComfyUI-SimpleMath.git"                 # SimpleMath+
+  "OnDemandLoRA/ComfyUI-OnDemandLoRA.git"         # OnDemand Lora Loader (6x)
+  "pysssss/ComfyUI_pysssss.git"                   # MathExpression|pysssss
+  "city96/ComfyUI-Impact-Pack.git"                # ModelSamplingSD3
+  "Comfy-Org/ComfyUI-Manager.git"                 # Manager geral
 )
 
-for NODE in "${REQUIRED_NODES[@]}"; do
-  REPO_NAME=$(basename "$NODE" .git)
-  if [ ! -d "$REPO_NAME" ]; then
-    echo "[nodes] git clone $NODE"
-    git clone -q "https://github.com/$NODE"
+for node in "${NODES[@]}"; do
+  name=$(basename "$node" .git)
+  if [ ! -d "$name" ]; then
+    echo "[nodes] git clone $name"
+    git clone -q "https://github.com/$node"
   fi
 done
 
-# Requirements (tolerante)
-find . -name "requirements.txt" -maxdepth 2 | while read req; do
-  pip install -q --no-cache-dir -r "$req" || echo "[warn] pip $req"
-done
+# Requirements
+echo "[2b/5] pip requirements..."
+find . -name "requirements*.txt" -exec pip install --no-cache-dir -q {} \; 2>/dev/null || true
 
-# === MODELOS BASE SD3 (compatível com ModelSamplingSD3) ===
-cd "$MODELS_DIR/checkpoints"
-echo "[models] SD3 base models..."
-
-# SD3.5 Medium (recomendado pra workflows modernos)
-wget -qnc --limit-rate=50m \
+# 3. Modelos Base SD3 (nó 136)
+echo "[3/5] Modelos SD3.5..."
+cd "${COMFY}/models/checkpoints"
+wget -qnc --limit-rate=50m --show-progress \
   "https://huggingface.co/stabilityai/stable-diffusion-3.5-medium/resolve/main/sd3.5_medium.safetensors" || \
   echo "[warn] SD3.5 medium"
 
 cd ../vae
-wget -qnc --limit-rate=50m \
-  "https://huggingface.co/stabilityai/sd-vae-ft-mse/resolve/main/vae-ft-mse-840000-ema-pruned.safetensors" || \
-  echo "[warn] VAE"
+wget -qnc --limit-rate=50m --show-progress \
+  "https://huggingface.co/stabilityai/sd-vae-ft-mse/resolve/main/vae-ft-mse-840000-ema-pruned.safetensors"
 
-# === AUTOLOAD WORKFLOW ===
-cat > "${COMFY_DIR}/autoload_neia.sh" << 'EOF'
+# 4. Autoload Workflow via API
+echo "[4/5] Configurando autoload..."
+cat > "${COMFY}/autoload_neia.sh" << 'EOF'
 #!/bin/bash
-sleep 15
+echo "[autoload] Aguardando ComfyUI..."
 for i in {1..30}; do
   nc -z 127.0.0.1 8188 2>/dev/null && break || sleep 2
 done
-curl -fsS -X POST "http://127.0.0.1:8188/prompt" \
+echo "[autoload] Enviando NEIA workflow..."
+curl -s -X POST "http://127.0.0.1:8188/prompt" \
   -H "Content-Type: application/json" \
-  --data-binary "@/workspace/ComfyUI/workflows/NEIA-GERAR-VIDEOS-18.json" >/dev/null 2>&1 || true
+  --data-binary "@/workspace/ComfyUI/workflows/NEIA-GERAR-VIDEOS-18.json" || true
+echo "[autoload] ✅ NEIA carregado!"
 EOF
 
-chmod +x "${COMFY_DIR}/autoload_neia.sh"
+chmod +x "${COMFY}/autoload_neia.sh"
 
+# Supervisor service
 cat > /etc/supervisor/conf.d/neia-autoload.conf << EOF
 [program:neia-autoload]
 command=bash -c "sleep 25 && /workspace/ComfyUI/autoload_neia.sh"
+directory=/workspace
 autostart=true
-priority=999
-stderr_logfile=/var/log/neia.err
-stdout_logfile=/var/log/neia.out
+autorestart=false
+priority=100
+stderr_logfile=/var/log/neia.err.log
+stdout_logfile=/var/log/neia.out.log
 EOF
 
 supervisorctl reread && supervisorctl update
 
-echo "✅ NEIA-GERAR-VIDEOS-18 pronto! Porta 8188 + todos custom nodes."
-echo "📁 Workflow: /workspace/ComfyUI/workflows/NEIA-GERAR-VIDEOS-18.json"
+# 5. Finalização
+echo "[5/5] ✅ SETUP CONCLUÍDO!"
+echo "   ComfyUI: http://localhost:8188"
+echo "   Workflow: ${COMFY}/workflows/NEIA-GERAR-VIDEOS-18.json"
+echo "   Login: admin/neia2026"
+echo "   Custom Nodes: $(ls -1 custom_nodes/ | wc -l | xargs) instalados"
