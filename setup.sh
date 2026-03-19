@@ -1,94 +1,228 @@
-#!/bin/bash
-# Script de setup para ComfyUI - Wan2.2 I2V (versão simplificada)
-# Apenas instala custom nodes e baixa modelos. Workflow será importado manualmente.
+# Build argument for base image selection
+ARG BASE_IMAGE=nvidia/cuda:12.6.3-cudnn-runtime-ubuntu24.04
 
-set -e
+# Stage 1: Base image with common dependencies
+FROM ${BASE_IMAGE} AS base
 
-echo "========================================="
-echo "🚀 Iniciando setup do ambiente ComfyUI"
-echo "========================================="
+# Build arguments for this stage with sensible defaults for standalone builds
+ARG COMFYUI_VERSION=latest
+ARG CUDA_VERSION_FOR_COMFY
+ARG ENABLE_PYTORCH_UPGRADE=false
+ARG PYTORCH_INDEX_URL
 
-COMFY_DIR="/workspace/ComfyUI"
-cd "$COMFY_DIR" || { echo "❌ Erro: $COMFY_DIR não encontrado!"; exit 1; }
+# Prevents prompts from packages asking for user input during installation
+ENV DEBIAN_FRONTEND=noninteractive
+# Prefer binary wheels over source distributions for faster pip installations
+ENV PIP_PREFER_BINARY=1
+# Ensures output from python is printed immediately to the terminal without buffering
+ENV PYTHONUNBUFFERED=1
+# Speed up some cmake builds
+ENV CMAKE_BUILD_PARALLEL_LEVEL=8
 
-# 1. Instalar custom nodes essenciais
-echo "📦 Instalando custom nodes..."
-cd custom_nodes || mkdir -p custom_nodes && cd custom_nodes
+# Install Python, git and other necessary tools
+RUN apt-get update && apt-get install -y \
+    python3.12 \
+    python3.12-venv \
+    python3.12-dev \
+    build-essential \
+    git \
+    wget \
+    libgl1 \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender1 \
+    ffmpeg \
+    && ln -sf /usr/bin/python3.12 /usr/bin/python \
+    && ln -sf /usr/bin/pip3 /usr/bin/pip
 
-# Lista de repositórios de nodes
-declare -A NODES=(
-    ["rgthree-comfy"]="https://github.com/rgthree/rgthree-comfy.git"
-    ["ComfyUI-Easy-Use"]="https://github.com/yolain/ComfyUI-Easy-Use.git"
-    ["ComfyUI-Math"]="https://github.com/evanspearman/ComfyUI-Math.git"
-    ["ComfyUI-VideoHelperSuite"]="https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite.git"
-    ["ComfyUI-Custom-Scripts"]="https://github.com/pythongosssss/ComfyUI-Custom-Scripts.git"
-    ["ComfyUI-Manager"]="https://github.com/ltdrdata/ComfyUI-Manager.git"
-)
+# Clean up to reduce image size
+RUN apt-get autoremove -y && apt-get clean -y && rm -rf /var/lib/apt/lists/*
 
-for node in "${!NODES[@]}"; do
-    if [ ! -d "$node" ]; then
-        git clone "${NODES[$node]}" && echo "✅ $node instalado"
-    else
-        echo "⏩ $node já existe"
+# Install uv (latest) using official installer and create isolated venv
+RUN wget -qO- https://astral.sh/uv/install.sh | sh \
+    && ln -s /root/.local/bin/uv /usr/local/bin/uv \
+    && ln -s /root/.local/bin/uvx /usr/local/bin/uvx \
+    && uv venv /opt/venv
+
+# Use the virtual environment for all subsequent commands
+ENV PATH="/opt/venv/bin:${PATH}"
+
+# Install comfy-cli + dependencies needed by it to install ComfyUI
+RUN uv pip install comfy-cli pip setuptools wheel
+
+# Install ComfyUI
+RUN if [ -n "${CUDA_VERSION_FOR_COMFY}" ]; then \
+      /usr/bin/yes | comfy --workspace /comfyui install --version "${COMFYUI_VERSION}" --cuda-version "${CUDA_VERSION_FOR_COMFY}" --nvidia; \
+    else \
+      /usr/bin/yes | comfy --workspace /comfyui install --version "${COMFYUI_VERSION}" --nvidia; \
     fi
-done
 
-# ComfyUI-OnDemand-Loaders (requer pip)
-if [ ! -d "ComfyUI-OnDemand-Loaders" ]; then
-    git clone https://github.com/francarl/ComfyUI-OnDemand-Loaders.git
-    cd ComfyUI-OnDemand-Loaders
-    pip install -r requirements.txt
-    cd ..
-    echo "✅ ComfyUI-OnDemand-Loaders instalado"
-fi
+# Upgrade PyTorch if needed (for newer CUDA versions)
+RUN if [ "$ENABLE_PYTORCH_UPGRADE" = "true" ]; then \
+      uv pip install --force-reinstall torch torchvision torchaudio --index-url ${PYTORCH_INDEX_URL}; \
+    fi
 
-cd "$COMFY_DIR"
+# Change working directory to ComfyUI
+WORKDIR /comfyui
 
-# 2. Criar pastas de modelos
-echo "📁 Criando pastas para modelos..."
-mkdir -p models/vae models/clip models/diffusion_models models/loras
+# Support for the network volume
+ADD src/extra_model_paths.yaml ./
 
-# 3. Baixar modelos públicos com aria2c
-echo "⬇️ Baixando modelos (pode levar alguns minutos)..."
-command -v aria2c >/dev/null 2>&1 || { apt update && apt install -y aria2; }
+# Go back to the root
+WORKDIR /
 
-# VAE
-aria2c -x 4 -s 4 -c -d models/vae -o wan_2.1_vae.safetensors \
-    "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/vae/wan_2.1_vae.safetensors"
+# Install Python runtime dependencies for the handler
+RUN uv pip install runpod requests websocket-client
 
-# CLIP
-aria2c -x 4 -s 4 -c -d models/clip -o umt5_xxl_fp8_e4m3fn_scaled.safetensors \
-    "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors"
+# Add application code and scripts
+ADD src/start.sh handler.py test_input.json ./
+RUN chmod +x /start.sh
 
-# UNET Low Noise
-aria2c -x 4 -s 4 -c -d models/diffusion_models -o wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors \
-    "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors"
+# Add script to install custom nodes
+COPY scripts/comfy-node-install.sh /usr/local/bin/comfy-node-install
+RUN chmod +x /usr/local/bin/comfy-node-install
 
-# UNET High Noise
-aria2c -x 4 -s 4 -c -d models/diffusion_models -o wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors \
-    "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/diffusion_models/wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors"
+# Prevent pip from asking for confirmation during uninstall steps in custom nodes
+ENV PIP_NO_INPUT=1
 
-# LoRAS Lightning
-aria2c -x 4 -s 4 -c -d models/loras -o "Wan2.2-Lightning_I2V-A14B-4steps-lora_LOW_fp16.safetensors" \
-    "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/loras/wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors"
+# Copy helper script to switch Manager network mode at container start
+COPY scripts/comfy-manager-set-mode.sh /usr/local/bin/comfy-manager-set-mode
+RUN chmod +x /usr/local/bin/comfy-manager-set-mode
 
-aria2c -x 4 -s 4 -c -d models/loras -o "Wan2.2-Lightning_I2V-A14B-4steps-lora_HIGH_fp16.safetensors" \
-    "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged/resolve/main/split_files/loras/wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors"
+# Stage 2: Download models
+FROM base AS downloader
 
-# 4. Instalar FFmpeg
-echo "🎬 Instalando FFmpeg..."
-apt update && apt install -y ffmpeg
+ARG HUGGINGFACE_ACCESS_TOKEN
+# Set default model type if none is provided
+ARG MODEL_TYPE=wan21
 
-echo "========================================="
-echo "✅ Setup concluído com sucesso!"
-echo "🚀 Iniciando ComfyUI na porta 8188..."
-echo "========================================="
-echo "ℹ️  Workflow não foi baixado automaticamente."
-echo "   Para importar manualmente:"
-echo "   1. Acesse a interface web do ComfyUI (URL do pod na porta 8188)"
-echo "   2. Clique em 'Load' (ou arraste o arquivo JSON para a janela)"
-echo "   3. Selecione o arquivo do workflow que você tem localmente"
-echo "========================================="
+# Change working directory to ComfyUI
+WORKDIR /comfyui
 
-cd "$COMFY_DIR"
-python main.py --listen --port 8188
+# Create necessary directories upfront
+RUN mkdir -p models/checkpoints models/vae models/unet models/clip models/diffusion_models models/text_encoders models/clip_vision
+
+# ============================================================
+# DOWNLOAD MODELS BASED ON MODEL_TYPE
+# ============================================================
+
+# --- Model Type: wan21 (Wan2.1 I2V para seu workflow) ---
+RUN if [ "$MODEL_TYPE" = "wan21" ]; then \
+      echo "Baixando modelos Wan2.1 I2V..." && \
+      # Diffusion Model (FP8 480P)
+      wget -q -O models/diffusion_models/Wan2_1-I2V-14B-480P_fp8_e4m3fn.safetensors \
+      https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Wan2_1-I2V-14B-480P_fp8_e4m3fn.safetensors && \
+      # Text Encoder UMT5 XXL BF16
+      wget -q -O models/text_encoders/umt5-xxl-enc-bf16.safetensors \
+      https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/umt5-xxl-enc-bf16.safetensors && \
+      # VAE Wan2.1
+      wget -q -O models/vae/wan_2.1_vae.safetensors \
+      https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/vae/wan_2.1_vae.safetensors && \
+      # CLIP Vision
+      wget -q -O models/clip_vision/clip_vision_h.safetensors \
+      https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/clip_vision/clip_vision_h.safetensors; \
+    fi
+
+# (Opcional) Inclua outras condições se quiser manter compatibilidade com outros modelos
+RUN if [ "$MODEL_TYPE" = "sdxl" ]; then \
+      wget -q -O models/checkpoints/sd_xl_base_1.0.safetensors https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/resolve/main/sd_xl_base_1.0.safetensors && \
+      wget -q -O models/vae/sdxl_vae.safetensors https://huggingface.co/stabilityai/sdxl-vae/resolve/main/sdxl_vae.safetensors && \
+      wget -q -O models/vae/sdxl-vae-fp16-fix.safetensors https://huggingface.co/madebyollin/sdxl-vae-fp16-fix/resolve/main/sdxl_vae.safetensors; \
+    fi
+
+RUN if [ "$MODEL_TYPE" = "sd3" ]; then \
+      wget -q --header="Authorization: Bearer ${HUGGINGFACE_ACCESS_TOKEN}" -O models/checkpoints/sd3_medium_incl_clips_t5xxlfp8.safetensors https://huggingface.co/stabilityai/stable-diffusion-3-medium/resolve/main/sd3_medium_incl_clips_t5xxlfp8.safetensors; \
+    fi
+
+RUN if [ "$MODEL_TYPE" = "flux1-schnell" ]; then \
+      wget -q --header="Authorization: Bearer ${HUGGINGFACE_ACCESS_TOKEN}" -O models/unet/flux1-schnell.safetensors https://huggingface.co/black-forest-labs/FLUX.1-schnell/resolve/main/flux1-schnell.safetensors && \
+      wget -q -O models/clip/clip_l.safetensors https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/clip_l.safetensors && \
+      wget -q -O models/clip/t5xxl_fp8_e4m3fn.safetensors https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/t5xxl_fp8_e4m3fn.safetensors && \
+      wget -q --header="Authorization: Bearer ${HUGGINGFACE_ACCESS_TOKEN}" -O models/vae/ae.safetensors https://huggingface.co/black-forest-labs/FLUX.1-schnell/resolve/main/ae.safetensors; \
+    fi
+
+RUN if [ "$MODEL_TYPE" = "flux1-dev" ]; then \
+      wget -q --header="Authorization: Bearer ${HUGGINGFACE_ACCESS_TOKEN}" -O models/unet/flux1-dev.safetensors https://huggingface.co/black-forest-labs/FLUX.1-dev/resolve/main/flux1-dev.safetensors && \
+      wget -q -O models/clip/clip_l.safetensors https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/clip_l.safetensors && \
+      wget -q -O models/clip/t5xxl_fp8_e4m3fn.safetensors https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/t5xxl_fp8_e4m3fn.safetensors && \
+      wget -q --header="Authorization: Bearer ${HUGGINGFACE_ACCESS_TOKEN}" -O models/vae/ae.safetensors https://huggingface.co/black-forest-labs/FLUX.1-dev/resolve/main/ae.safetensors; \
+    fi
+
+RUN if [ "$MODEL_TYPE" = "flux1-dev-fp8" ]; then \
+      wget -q -O models/checkpoints/flux1-dev-fp8.safetensors https://huggingface.co/Comfy-Org/flux1-dev/resolve/main/flux1-dev-fp8.safetensors; \
+    fi
+
+# Stage 3: Final image
+FROM base AS final
+
+# Copy models from stage 2 to the final image
+COPY --from=downloader /comfyui/models /comfyui/models
+
+# ============================================================
+# INSTALAÇÃO DOS CUSTOM NODES (baseada no seu workflow)
+# ============================================================
+WORKDIR /comfyui/custom_nodes
+
+# Lista de repositórios (já verificados)
+RUN git clone https://github.com/rgthree/rgthree-comfy.git && \
+    git clone https://github.com/yolain/ComfyUI-Easy-Use.git && \
+    git clone https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite.git && \
+    git clone https://github.com/pythongosssss/ComfyUI-Custom-Scripts.git && \
+    git clone https://github.com/ltdrdata/ComfyUI-Impact-Pack.git && \
+    git clone https://github.com/francarl/ComfyUI-OnDemand-Loaders.git && \
+    git clone https://github.com/ltdrdata/ComfyUI-Inspire-Pack.git && \
+    git clone https://github.com/WASasquatch/was-node-suite-comfyui.git && \
+    git clone https://github.com/ltdrdata/ComfyUI-Manager.git
+
+# Instalar requirements de cada node (se existir)
+RUN for d in */ ; do \
+        if [ -f "$d/requirements.txt" ]; then \
+            pip install -r "$d/requirements.txt"; \
+        fi \
+    done
+
+# ============================================================
+# CONFIGURAÇÃO DO WORKFLOW E ONDEMAND LOADERS
+# ============================================================
+WORKDIR /comfyui
+
+# Criar pasta de workflows
+RUN mkdir -p user/default/workflows
+
+# Baixar o workflow NEIA
+ADD https://raw.githubusercontent.com/willastros-sketch/NEIA-COMFYUI/main/NEIA-GERAR-VIDEOS-18.json user/default/workflows/NEIA-GERAR-VIDEOS-18.json
+
+# (Opcional) Criar config.json para OnDemand Loaders com LoRAs de exemplo
+RUN mkdir -p custom_nodes/ComfyUI-OnDemand-Loaders && \
+    echo '{
+    "loras": [
+        {
+            "name": "Oral Insertion (Wan2.2)",
+            "url": "https://civitai.com/api/download/models/2073605"
+        },
+        {
+            "name": "POV Cowgirl (Wan2.2)",
+            "url": "https://civitai.com/api/download/models/2120000"
+        },
+        {
+            "name": "POV Missionary (Wan2.2)",
+            "url": "https://civitai.com/api/download/models/2240000"
+        }
+    ]
+}' > custom_nodes/ComfyUI-OnDemand-Loaders/config.json
+
+# Configurar settings para abrir workflow automaticamente
+RUN echo '{
+  "Comfy.UseNewMenu": "Top",
+  "Comfy.Sidebar.Location": "left",
+  "Comfy.Workflow.ShowMissingModelsWarning": false,
+  "Comfy.Workflow.ShowMissingNodesWarning": false,
+  "Comfy.Server.ServerConfigValues": {}
+}' > user/default/comfy.settings.json
+
+# Ajustar permissões (opcional)
+RUN chmod -R 755 /comfyui
+
+# Manter o CMD original
+CMD ["/start.sh"]
