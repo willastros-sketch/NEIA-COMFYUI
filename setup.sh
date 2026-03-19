@@ -1,264 +1,130 @@
-#!/bin/bash
-# ================================================================
-#  ΝΞΙΔ COMMUNITY — RunPod Setup Script v3
-#  Workflow: NEIA-GERAR-VIDEOS-18 (Wan2.1 I2V)
-#  Instala todos os custom nodes identificados no workflow
-# ================================================================
-set -euo pipefail
+#!/usr/bin/env bash
+set -e
 
-COMFY_DIR="/workspace/ComfyUI"
-NODES_DIR="$COMFY_DIR/custom_nodes"
-MODELS_DIR="$COMFY_DIR/models"
-WORKFLOW_URL="https://raw.githubusercontent.com/willastros-sketch/NEIA-COMFYUI/main/NEIA-GERAR-VIDEOS-18.json"
-LOG="/workspace/setup.log"
+echo "[init] Provisioning NEIA ComfyUI environment..."
 
-echo "" | tee -a "$LOG"
-echo "╔════════════════════════════════════════════════════╗" | tee -a "$LOG"
-echo "║   ΝΞΙΔ COMMUNITY — Setup RunPod v3                ║" | tee -a "$LOG"
-echo "╚════════════════════════════════════════════════════╝" | tee -a "$LOG"
-echo "" | tee -a "$LOG"
+# --- Variáveis básicas ---
+WORKSPACE="${WORKSPACE:-/workspace}"
+COMFY_DIR="${WORKSPACE}/ComfyUI"
+CUSTOM_NODES_DIR="${COMFY_DIR}/custom_nodes"
+MODELS_DIR="${COMFY_DIR}/models"
+INPUT_DIR="${COMFY_DIR}/input"
+OUTPUT_DIR="${COMFY_DIR}/output"
+WORKFLOWS_DIR="${COMFY_DIR}/workflows"
 
-# ──────────────────────────────────────────────────────────────
-# FUNÇÃO: clonar ou atualizar um repositório git
-# ──────────────────────────────────────────────────────────────
-clone_or_update() {
-    local DEST="$1"
-    local URL="$2"
-    local NAME=$(basename "$DEST")
-    if [ ! -d "$DEST/.git" ]; then
-        echo "  → Clonando $NAME..." | tee -a "$LOG"
-        if git clone --depth=1 -q "$URL" "$DEST" 2>>"$LOG"; then
-            echo "  ✔ $NAME clonado." | tee -a "$LOG"
-        else
-            echo "  ✗ Falha ao clonar $NAME. Continuando..." | tee -a "$LOG"
-            return 1
-        fi
-    else
-        echo "  ✔ $NAME já existe (pulando clone)." | tee -a "$LOG"
-    fi
-    # Instalar requirements se existir
-    if [ -f "$DEST/requirements.txt" ]; then
-        pip install -q -r "$DEST/requirements.txt" >> "$LOG" 2>&1 || true
-    fi
-}
+WORKFLOW_URL="https://raw.githubusercontent.com/willastros-sketch/NEIA-COMFYUI/refs/heads/main/NEIA-GERAR-VIDEOS-18.json"
+WORKFLOW_FILE="${WORKFLOWS_DIR}/NEIA-GERAR-VIDEOS-18.json"
 
-# ──────────────────────────────────────────────────────────────
-# FUNÇÃO: baixar modelo somente se não existir
-# ──────────────────────────────────────────────────────────────
-download_model() {
-    local DEST_PATH="$1"
-    local URL="$2"
-    local FILENAME=$(basename "$DEST_PATH")
-    if [ -f "$DEST_PATH" ]; then
-        echo "  ✔ $FILENAME já existe — pulando." | tee -a "$LOG"
-        return 0
-    fi
-    echo "  → Baixando $FILENAME..." | tee -a "$LOG"
-    mkdir -p "$(dirname "$DEST_PATH")"
-    wget -q --show-progress \
-        --retry-connrefused \
-        --tries=5 \
-        --timeout=60 \
-        -O "$DEST_PATH" \
-        "$URL" 2>>"$LOG" || {
-            echo "  ✗ ERRO ao baixar $FILENAME — verifique o log." | tee -a "$LOG"
-            rm -f "$DEST_PATH"
-            return 1
-        }
-    echo "  ✔ $FILENAME baixado com sucesso." | tee -a "$LOG"
-}
+mkdir -p "${CUSTOM_NODES_DIR}" "${MODELS_DIR}" "${INPUT_DIR}" "${OUTPUT_DIR}" "${WORKFLOWS_DIR}"
 
-# ──────────────────────────────────────────────────────────────
-# 1. DEPENDÊNCIAS DO SISTEMA
-# ──────────────────────────────────────────────────────────────
-echo "▶ [1/6] Instalando dependências..." | tee -a "$LOG"
-apt-get update -qq >> "$LOG" 2>&1
-apt-get install -y -qq git wget curl ffmpeg libgl1 libglib2.0-0 aria2 >> "$LOG" 2>&1
-pip install -q --upgrade pip huggingface_hub >> "$LOG" 2>&1
-echo "✔ Dependências OK." | tee -a "$LOG"
+echo "[init] Clonando alguns custom nodes básicos..."
+cd "${CUSTOM_NODES_DIR}"
 
-# ──────────────────────────────────────────────────────────────
-# 2. COMFYUI
-# ──────────────────────────────────────────────────────────────
-echo "" | tee -a "$LOG"
-echo "▶ [2/6] Configurando ComfyUI..." | tee -a "$LOG"
-
-if [ ! -d "$COMFY_DIR/.git" ]; then
-    echo "  → Clonando ComfyUI..." | tee -a "$LOG"
-    git clone --depth=1 -q https://github.com/comfyanonymous/ComfyUI.git "$COMFY_DIR" 2>>"$LOG"
-    pip install -q -r "$COMFY_DIR/requirements.txt" >> "$LOG" 2>&1
-    echo "  ✔ ComfyUI instalado." | tee -a "$LOG"
-else
-    echo "  ✔ ComfyUI já existe." | tee -a "$LOG"
+# Exemplo – ajuste conforme o que seu workflow realmente usa
+if [ ! -d "ComfyUI-VideoHelperSuite" ]; then
+  git clone https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite.git
 fi
 
-mkdir -p "$NODES_DIR"
-mkdir -p "$COMFY_DIR/user/default/workflows"
-mkdir -p "$MODELS_DIR/diffusion_models"
-mkdir -p "$MODELS_DIR/vae"
-mkdir -p "$MODELS_DIR/text_encoders"
-mkdir -p "$MODELS_DIR/clip_vision"
-mkdir -p "$MODELS_DIR/loras"
-
-echo "✔ ComfyUI OK." | tee -a "$LOG"
-
-# ──────────────────────────────────────────────────────────────
-# 3. CUSTOM NODES (lista completa baseada no workflow)
-# ──────────────────────────────────────────────────────────────
-echo "" | tee -a "$LOG"
-echo "▶ [3/6] Instalando Custom Nodes..." | tee -a "$LOG"
-
-# 1. rgthree — Fast Bypasser (usado nos ON/OFF)
-clone_or_update "$NODES_DIR/rgthree-comfy" \
-    "https://github.com/rgthree/rgthree-comfy.git"
-
-# 2. ComfyUI-Easy-Use — easy int, easy showAnything
-clone_or_update "$NODES_DIR/ComfyUI-Easy-Use" \
-    "https://github.com/yolain/ComfyUI-Easy-Use.git"
-
-# 3. ComfyUI-VideoHelperSuite — VHS_VideoCombine, LoadAudio
-clone_or_update "$NODES_DIR/ComfyUI-VideoHelperSuite" \
-    "https://github.com/Kosinkadink/ComfyUI-VideoHelperSuite.git"
-
-# 4. ComfyUI-WanVideoWrapper — WanImageToVideo (nó essencial)
-clone_or_update "$NODES_DIR/ComfyUI-WanVideoWrapper" \
-    "https://github.com/kijai/ComfyUI-WanVideoWrapper.git"
-
-# 5. ComfyUI-Custom-Scripts — MathExpression|pysssss
-clone_or_update "$NODES_DIR/ComfyUI-Custom-Scripts" \
-    "https://github.com/pythongosssss/ComfyUI-Custom-Scripts.git"
-
-# 6. was-node-suite-comfyui — SimpleMath+
-clone_or_update "$NODES_DIR/was-node-suite-comfyui" \
-    "https://github.com/WASasquatch/was-node-suite-comfyui.git"
-
-# 7. ComfyUI-Manager — (recomendado, não obrigatório)
-clone_or_update "$NODES_DIR/ComfyUI-Manager" \
-    "https://github.com/ltdrdata/ComfyUI-Manager.git"
-
-# 8. ComfyUI-Inspire-Pack — MarkdownNote
-clone_or_update "$NODES_DIR/ComfyUI-Inspire-Pack" \
-    "https://github.com/ltdrdata/ComfyUI-Inspire-Pack.git"
-
-# 9. ComfyUI-OnDemand-Loaders — OnDemand Lora Loader
-clone_or_update "$NODES_DIR/ComfyUI-OnDemand-Loaders" \
-    "https://github.com/francarl/ComfyUI-OnDemand-Loaders.git"
-
-# 10. ComfyUI-Impact-Pack — (opcional, alguns nodes podem precisar)
-# clone_or_update "$NODES_DIR/ComfyUI-Impact-Pack" \
-#     "https://github.com/ltdrdata/ComfyUI-Impact-Pack.git"
-
-echo "✔ Custom Nodes instalados." | tee -a "$LOG"
-
-# ──────────────────────────────────────────────────────────────
-# 4. MODELOS WAN 2.1 (obrigatórios)
-# ──────────────────────────────────────────────────────────────
-echo "" | tee -a "$LOG"
-echo "▶ [4/6] Baixando Modelos Wan2.1..." | tee -a "$LOG"
-echo "  ⚠ Modelos grandes (~17GB+). Isso pode levar 15-40 min." | tee -a "$LOG"
-
-# Diffusion Model (FP8 480P)
-download_model \
-    "$MODELS_DIR/diffusion_models/Wan2_1-I2V-14B-480P_fp8_e4m3fn.safetensors" \
-    "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/Wan2_1-I2V-14B-480P_fp8_e4m3fn.safetensors"
-
-# Text Encoder UMT5 XXL BF16
-download_model \
-    "$MODELS_DIR/text_encoders/umt5-xxl-enc-bf16.safetensors" \
-    "https://huggingface.co/Kijai/WanVideo_comfy/resolve/main/umt5-xxl-enc-bf16.safetensors"
-
-# VAE Wan2.1
-download_model \
-    "$MODELS_DIR/vae/wan_2.1_vae.safetensors" \
-    "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/vae/wan_2.1_vae.safetensors"
-
-# CLIP Vision
-download_model \
-    "$MODELS_DIR/clip_vision/clip_vision_h.safetensors" \
-    "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged/resolve/main/split_files/clip_vision/clip_vision_h.safetensors"
-
-echo "✔ Modelos baixados." | tee -a "$LOG"
-
-# ──────────────────────────────────────────────────────────────
-# 5. CONFIGURAÇÃO DO ONDEMAND LOADERS (para LoRAs do Civitai)
-# ──────────────────────────────────────────────────────────────
-echo "" | tee -a "$LOG"
-echo "▶ [5/6] Configurando OnDemand Loaders..." | tee -a "$LOG"
-
-LOADER_CONFIG_DIR="$NODES_DIR/ComfyUI-OnDemand-Loaders"
-if [ -d "$LOADER_CONFIG_DIR" ]; then
-    # Cria um config.json com exemplos de LoRAs (você pode editar depois)
-    cat > "$LOADER_CONFIG_DIR/config.json" << 'CONFIG_EOF'
-{
-    "loras": [
-        {
-            "name": "Oral Insertion (Wan2.2)",
-            "url": "https://civitai.com/api/download/models/2073605"
-        },
-        {
-            "name": "POV Cowgirl (Wan2.2)",
-            "url": "https://civitai.com/api/download/models/2120000"
-        },
-        {
-            "name": "POV Missionary (Wan2.2)",
-            "url": "https://civitai.com/api/download/models/2240000"
-        }
-    ]
-}
-CONFIG_EOF
-    echo "  ✔ config.json criado com LoRAs de exemplo." | tee -a "$LOG"
-else
-    echo "  ⚠ Pasta do OnDemand Loaders não encontrada." | tee -a "$LOG"
+if [ ! -d "ComfyUI-AnimateDiff-Evolved" ]; then
+  git clone https://github.com/Kosinkadink/ComfyUI-AnimateDiff-Evolved.git
 fi
 
-# ──────────────────────────────────────────────────────────────
-# 6. WORKFLOW + CONFIGURAÇÃO DE AUTO-ABERTURA
-# ──────────────────────────────────────────────────────────────
-echo "" | tee -a "$LOG"
-echo "▶ [6/6] Configurando Workflow..." | tee -a "$LOG"
-
-WORKFLOW_DEST="$COMFY_DIR/user/default/workflows/NEIA-GERAR-VIDEOS-18.json"
-
-echo "  → Baixando workflow do GitHub..." | tee -a "$LOG"
-if wget -q -O "$WORKFLOW_DEST" "$WORKFLOW_URL" 2>>"$LOG"; then
-    echo "  ✔ Workflow salvo." | tee -a "$LOG"
-else
-    echo "  ✗ ERRO ao baixar workflow — verifique a URL." | tee -a "$LOG"
+if [ ! -d "comfyui_controlnet_aux" ]; then
+  git clone https://github.com/Fannovel16/comfyui_controlnet_aux.git
 fi
 
-# Configuração do ComfyUI para abrir o workflow automaticamente
-cat > "$COMFY_DIR/user/default/comfy.settings.json" << 'SETTINGS_EOF'
-{
-  "Comfy.UseNewMenu": "Top",
-  "Comfy.Sidebar.Location": "left",
-  "Comfy.Workflow.ShowMissingModelsWarning": false,
-  "Comfy.Workflow.ShowMissingNodesWarning": false,
-  "Comfy.Server.ServerConfigValues": {},
-  "Comfy.Workflow.OpenWorkflowOnLoad": "NEIA-GERAR-VIDEOS-18.json"
-}
-SETTINGS_EOF
+# Instalar requisitos dos custom nodes (best effort, sem quebrar se um falhar)
+echo "[init] Instalando requirements dos custom nodes..."
+for REQ in $(find "${CUSTOM_NODES_DIR}" -maxdepth 2 -name "requirements.txt"); do
+  echo "[init] pip install -r ${REQ}"
+  pip install -r "${REQ}" || echo "[warn] falhou requirements em ${REQ}, seguindo..."
+done
 
-echo "  ✔ Configurações salvas." | tee -a "$LOG"
+# --- Modelos e Loras (EXEMPLOS, ajuste para os que seu workflow realmente referencia) ---
 
-# ──────────────────────────────────────────────────────────────
-# INICIAR COMFYUI
-# ──────────────────────────────────────────────────────────────
-echo "" | tee -a "$LOG"
-echo "╔════════════════════════════════════════════════════╗" | tee -a "$LOG"
-echo "║    ✅ Setup concluído! Iniciando ComfyUI...        ║" | tee -a "$LOG"
-echo "╚════════════════════════════════════════════════════╝" | tee -a "$LOG"
-echo "" | tee -a "$LOG"
-echo "  🌐 Acesse via: RunPod → Connect → HTTP Port 3000" | tee -a "$LOG"
-echo "  📁 Log completo: $LOG" | tee -a "$LOG"
-echo "" | tee -a "$LOG"
+echo "[init] Baixando alguns modelos/lora de exemplo..."
+cd "${MODELS_DIR}"
 
-cd "$COMFY_DIR"
+# Checkpoint principal – troque para o que seu workflow usa
+if [ ! -f "sd_xl_base_1.0.safetensors" ]; then
+  wget -O sd_xl_base_1.0.safetensors \
+    https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0/resolve/main/sd_xl_base_1.0.safetensors || \
+    echo "[warn] falha ao baixar sd_xl_base_1.0"
+fi
 
-# Inicia o ComfyUI
-exec python main.py \
-    --listen 0.0.0.0 \
-    --port 3000 \
-    --enable-cors-header "*" \
-    --preview-method auto \
-    --fp8_e4m3fn-unet \
-    2>&1 | tee -a "$LOG"
+mkdir -p "${MODELS_DIR}/loras"
+cd "${MODELS_DIR}/loras"
+
+# Exemplo de Lora – ajuste / adicione
+if [ ! -f "example_lora.safetensors" ]; then
+  wget -O example_lora.safetensors \
+    https://huggingface.co/latent-consult/example-lora/resolve/main/example_lora.safetensors || \
+    echo "[warn] falha ao baixar example_lora"
+fi
+
+# --- Baixar e registrar o workflow ---
+echo "[init] Baixando workflow NEIA..."
+cd "${WORKFLOWS_DIR}"
+curl -L "${WORKFLOW_URL}" -o "${WORKFLOW_FILE}"
+
+# --- Configurar auto-carregamento do workflow via API on-start ---
+# Cria script que será chamado no boot para enviar o workflow via API
+AUTOLOAD_SCRIPT="${COMFY_DIR}/autoload_neia_workflow.sh"
+
+cat > "${AUTOLOAD_SCRIPT}" << 'EOF'
+#!/usr/bin/env bash
+set -e
+
+COMFY_HOST="127.0.0.1"
+COMFY_PORT="${COMFYUI_PORT:-8188}"
+WORKSPACE="${WORKSPACE:-/workspace}"
+COMFY_DIR="${WORKSPACE}/ComfyUI"
+WORKFLOWS_DIR="${COMFY_DIR}/workflows"
+WORKFLOW_FILE="${WORKFLOWS_DIR}/NEIA-GERAR-VIDEOS-18.json"
+
+echo "[autoload] Aguardando ComfyUI subir em ${COMFY_HOST}:${COMFY_PORT}..."
+
+# espera porta ficar disponível
+for i in {1..60}; do
+  if nc -z "${COMFY_HOST}" "${COMFY_PORT}" 2>/dev/null; then
+    echo "[autoload] ComfyUI está no ar, enviando workflow..."
+    break
+  fi
+  sleep 2
+done
+
+if ! nc -z "${COMFY_HOST}" "${COMFY_PORT}" 2>/dev/null; then
+  echo "[autoload] Timeout esperando ComfyUI, abortando autoload."
+  exit 0
+fi
+
+if [ ! -f "${WORKFLOW_FILE}" ]; then
+  echo "[autoload] Workflow não encontrado em ${WORKFLOW_FILE}"
+  exit 0
+fi
+
+# Envia workflow para a API (create empty prompt com workflow)
+curl -X POST "http://${COMFY_HOST}:${COMFY_PORT}/prompt" \
+  -H "Content-Type: application/json" \
+  --data-binary @"${WORKFLOW_FILE}" || echo "[autoload] falha ao enviar workflow"
+
+echo "[autoload] Workflow NEIA enviado para a sessão atual."
+EOF
+
+chmod +x "${AUTOLOAD_SCRIPT}"
+
+# Cria um serviço supervisord simples para rodar o autoload script depois que o comfyui estiver no ar
+SUP_CONF="/etc/supervisor/conf.d/neia_autoload.conf"
+if [ ! -f "${SUP_CONF}" ]; then
+  cat > "${SUP_CONF}" <<EOF
+[program:neia_autoload]
+command=/bin/bash -c "sleep 20 && ${AUTOLOAD_SCRIPT}"
+priority=20
+autostart=true
+autorestart=false
+stderr_logfile=/var/log/supervisor/neia_autoload.err.log
+stdout_logfile=/var/log/supervisor/neia_autoload.out.log
+EOF
+fi
+
+echo "[init] Provisioning NEIA finalizado."
